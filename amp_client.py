@@ -10,7 +10,10 @@ CAN drift between releases, so this client is written defensively:
 """
 
 import time
+import logging
 import aiohttp
+
+log = logging.getLogger("amp_client")
 
 
 class AMPError(Exception):
@@ -82,9 +85,7 @@ class AMPClient:
 
         if debug_dump_raw:
             import json
-            print("=== RAW GetInstances ===")
-            print(json.dumps(data, indent=2)[:4000])
-            print("=== END RAW ===")
+            log.debug("=== RAW GetInstances ===\n%s", json.dumps(data, indent=2)[:4000])
 
         instances: list[dict] = []
 

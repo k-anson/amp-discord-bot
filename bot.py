@@ -11,7 +11,9 @@ Setup: copy config.example.json to config.json and fill in your values, then
 """
 
 import json
+import logging
 import os
+import sys
 import discord
 from discord import app_commands
 from discord.ext import tasks
@@ -24,6 +26,14 @@ STATE_PATH = "state.json"
 
 with open(CONFIG_PATH, "r") as f:
     CONFIG = json.load(f)
+
+logging.basicConfig(
+    level=getattr(logging, CONFIG.get("log_level", "INFO").upper(), logging.INFO),
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[logging.StreamHandler(sys.stdout)],
+)
+log = logging.getLogger("bot")
 
 def load_state() -> dict:
     if os.path.exists(STATE_PATH):
@@ -111,7 +121,7 @@ async def update_status_message():
     try:
         instances = await amp.get_instances(debug_dump_raw=CONFIG.get("debug_dump_raw", False))
     except Exception as exc:
-        print(f"[AMP] Failed to fetch instances: {exc}")
+        log.error("Failed to fetch AMP instances: %s", exc)
         return
 
     embed = build_embed(instances)
@@ -128,11 +138,13 @@ async def update_status_message():
 
     if message is None:
         message = await channel.send(embed=embed)
+        log.info("Created embed message")
         state["message_id"] = message.id
         state["channel_id"] = channel.id
         save_state(state)
     else:
         await message.edit(embed=embed)
+        log.info("Updated embed message")
 
 
 @update_status_message.before_loop
@@ -160,10 +172,13 @@ async def ampstatus(interaction: discord.Interaction):
 @client_bot.event
 async def on_ready():
     await tree.sync()
-    print(f"Logged in as {client_bot.user}")
+    log.info("Logged in as %s", client_bot.user)
     if not update_status_message.is_running():
         update_status_message.start()
 
 
 if __name__ == "__main__":
-    client_bot.run(CONFIG["discord_token"])
+    # log_handler=None: we already configured logging via basicConfig above,
+    # so let discord.py's own log records flow through that instead of also
+    # setting up its own separate handler/file.
+    client_bot.run(CONFIG["discord_token"], log_handler=None)
