@@ -1,0 +1,13 @@
+{
+  "discord_token": "YOUR_DISCORD_BOT_TOKEN",
+  "channel_id": 123456789012345678,
+  "amp": {
+    "url": "https://your-ads-controller.example.com:8080",
+    "username": "discord-bot-api-user",
+    "password": "a-strong-password",
+    "verify_ssl": true
+  },
+  "update_interval_seconds": 45,
+  "instance_filter": [],
+  "debug_dump_raw": false
+}
