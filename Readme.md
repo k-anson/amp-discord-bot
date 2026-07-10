@@ -6,20 +6,38 @@ and CPU when running, or "Offline" when not.
 
 ## What it looks like
 
-One Discord embed, one field per server, using a colored circle emoji as the
-online/offline indicator (🔵 online, 🔴 offline):
+One Discord embed. A "System Overview" section up top (running count, total
+players, an estimated host CPU/memory load, and a 🟢/🟡/🔴 capacity indicator),
+followed by one field per server using a colored circle emoji (🔵 online, 🔴 offline):
 
 ```
-🔵 Palworld
-Players: 2/8
-Memory: 78%
-CPU: 12%
+Instances Running: 2/5
+Players Online: 3
+Host CPU: ~35%
+Host Memory: 6.0/23.4 GB (26%)
+Capacity: 🟢 Room to host another server
 
-🔴 Valheim
+🔵 Palworld
+Players: 3/8
+Memory: 40%
+CPU: 25%
+
+🔴 Rust
 Offline
 
 Updated: 3:18 PM
 ```
+
+The capacity indicator is based on total memory used by *running* instances vs.
+the host's installed RAM (from AMP's `Platform.InstalledRAMMB`), not a hardcoded
+"one server at a time" rule - so it adapts if your headroom or hosting habits
+change. Thresholds are tunable in `config.json`:
+- `capacity_warn_percent` (default 70) - 🟡 above this
+- `capacity_full_percent` (default 90) - 🔴 above this
+
+The CPU figure is a rough estimate (sum of each running instance's reported CPU
+percent) rather than true host-wide CPU load, since AMP doesn't expose that
+directly - treat it as a ballpark, not the number the capacity indicator relies on.
 
 ## Setup
 

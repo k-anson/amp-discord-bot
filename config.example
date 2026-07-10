@@ -9,5 +9,6 @@
   },
   "update_interval_seconds": 45,
   "instance_filter": [],
-  "debug_dump_raw": false
+  "debug_dump_raw": false,
+  "log_level": "INFO"
 }

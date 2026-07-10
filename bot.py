@@ -19,7 +19,14 @@ from discord import app_commands
 from discord.ext import tasks
 from datetime import datetime
 
-from amp_client import AMPClient, is_running, find_metric, format_metric_percent, format_metric_fraction
+from amp_client import (
+    AMPClient,
+    is_running,
+    find_metric,
+    format_metric_percent,
+    format_metric_fraction,
+    metric_raw,
+)
 
 CONFIG_PATH = "config.json"
 STATE_PATH = "state.json"
@@ -61,12 +68,60 @@ amp = AMPClient(
 state = load_state()
 
 
-def build_embed(instances: list[dict]) -> discord.Embed:
+def build_overview_text(snapshot) -> str:
+    instances = snapshot.instances
+    host = snapshot.host
+    instance_filter = CONFIG.get("instance_filter") or []
+    relevant = [i for i in instances if not instance_filter or
+                (i.get("FriendlyName") or i.get("InstanceName")) in instance_filter]
+
+    running = [i for i in relevant if is_running(i)]
+    total_players = 0
+    total_mem_mb = 0.0
+    total_cpu_pct = 0.0
+    have_player_data = False
+    have_mem_data = False
+    have_cpu_data = False
+
+    for inst in running:
+        players = metric_raw(find_metric(inst, "user", "player", "active"))
+        if players is not None:
+            total_players += players
+            have_player_data = True
+        mem = metric_raw(find_metric(inst, "memory", "ram"))
+        if mem is not None:
+            total_mem_mb += mem
+            have_mem_data = True
+        cpu_metric = find_metric(inst, "cpu")
+        cpu_pct = cpu_metric.get("Percent") if cpu_metric else None
+        if cpu_pct is not None:
+            total_cpu_pct += cpu_pct
+            have_cpu_data = True
+
+    lines = [f"Instances Running: {len(running)}/{len(relevant)}"]
+    lines.append(f"Players Online: {total_players}" if have_player_data else "Players Online: n/a")
+    lines.append(f"Host CPU: ~{round(total_cpu_pct)}%" if have_cpu_data else "Host CPU: n/a")
+
+    if have_mem_data and host.installed_ram_mb:
+        used_gb = total_mem_mb / 1024
+        total_gb = host.installed_ram_mb / 1024
+        pct = (total_mem_mb / host.installed_ram_mb) * 100
+        lines.append(f"Host Memory: {used_gb:.1f}/{total_gb:.1f} GB ({round(pct)}%)")
+    else:
+        lines.append("Host Memory: n/a")
+        lines.append("Capacity: n/a (no memory metrics available)")
+
+    return "\n".join(lines)
+
+
+def build_embed(snapshot) -> discord.Embed:
     embed = discord.Embed(title="Server Status", color=discord.Color.dark_theme())
+    embed.description = f"```\n{build_overview_text(snapshot)}\n```"
+
     instance_filter = CONFIG.get("instance_filter") or []
     any_added = False
 
-    for inst in instances:
+    for inst in snapshot.instances:
         name = inst.get("FriendlyName") or inst.get("InstanceName") or "Unknown Instance"
         if instance_filter and name not in instance_filter:
             continue
@@ -91,9 +146,13 @@ def build_embed(instances: list[dict]) -> discord.Embed:
         any_added = True
 
     if not any_added:
-        embed.description = (
-            "No instances found. Check `instance_filter` in config.json and "
-            "confirm your API user can see instances."
+        embed.add_field(
+            name="No instances found",
+            value=(
+                "Check `instance_filter` in config.json and confirm your API user "
+                "can see instances."
+            ),
+            inline=False,
         )
 
     return embed
@@ -119,12 +178,12 @@ async def update_status_message():
         return
 
     try:
-        instances = await amp.get_instances(debug_dump_raw=CONFIG.get("debug_dump_raw", False))
+        snapshot = await amp.get_snapshot(debug_dump_raw=CONFIG.get("debug_dump_raw", False))
     except Exception as exc:
         log.error("Failed to fetch AMP instances: %s", exc)
         return
 
-    embed = build_embed(instances)
+    embed = build_embed(snapshot)
     timestamp = datetime.now().strftime("%-I:%M %p")
     embed.set_footer(text=f"Updated: {timestamp}")
 

@@ -11,6 +11,7 @@ CAN drift between releases, so this client is written defensively:
 
 import time
 import logging
+from dataclasses import dataclass, field
 import aiohttp
 
 log = logging.getLogger("amp_client")
@@ -18,6 +19,22 @@ log = logging.getLogger("amp_client")
 
 class AMPError(Exception):
     pass
+
+
+@dataclass
+class HostInfo:
+    """Static info about the machine the ADS controller runs on."""
+    installed_ram_mb: float | None = None
+    cpu_cores: int | None = None
+    cpu_threads: int | None = None
+    platform_name: str | None = None
+
+
+@dataclass
+class AMPSnapshot:
+    """One poll's worth of data: the game instances plus host hardware info."""
+    instances: list[dict] = field(default_factory=list)
+    host: HostInfo = field(default_factory=HostInfo)
 
 
 class AMPClient:
@@ -80,6 +97,11 @@ class AMPClient:
 
     async def get_instances(self, debug_dump_raw: bool = False) -> list[dict]:
         """Returns a flat list of instance dicts from the ADS controller."""
+        snapshot = await self.get_snapshot(debug_dump_raw=debug_dump_raw)
+        return snapshot.instances
+
+    async def get_snapshot(self, debug_dump_raw: bool = False) -> AMPSnapshot:
+        """Returns instances plus host hardware info (RAM/CPU) from the ADS controller."""
         await self.login()
         data = await self._call("ADSModule/GetInstances", {})
 
@@ -88,6 +110,7 @@ class AMPClient:
             log.info("=== RAW GetInstances ===\n%s", json.dumps(data, indent=2)[:4000])
 
         instances: list[dict] = []
+        host = HostInfo()
 
         def collect(node):
             if isinstance(node, dict):
@@ -95,6 +118,18 @@ class AMPClient:
                     instances.extend(node["AvailableInstances"])
                 elif "InstanceName" in node or "InstanceID" in node:
                     instances.append(node)
+
+                platform = node.get("Platform")
+                if isinstance(platform, dict) and host.installed_ram_mb is None:
+                    host.installed_ram_mb = platform.get("InstalledRAMMB")
+                    host.platform_name = platform.get("PlatformName")
+                    cpu_info = platform.get("CPUInfo") or {}
+                    host.cpu_cores = cpu_info.get("TotalCores") or cpu_info.get("Cores")
+                    host.cpu_threads = cpu_info.get("TotalThreads") or cpu_info.get("Threads")
+
+                for value in node.values():
+                    if isinstance(value, (dict, list)):
+                        collect(value)
             elif isinstance(node, list):
                 for item in node:
                     collect(item)
@@ -102,7 +137,17 @@ class AMPClient:
         collect(data)
         # The ADS controller lists itself as an instance too (Module == "ADS") -
         # exclude it since it's not a game server and has no player/CPU/memory metrics.
-        return [inst for inst in instances if inst.get("Module") != "ADS"]
+        seen_ids = set()
+        deduped = []
+        for inst in instances:
+            if inst.get("Module") == "ADS":
+                continue
+            key = inst.get("InstanceID") or inst.get("InstanceName")
+            if key in seen_ids:
+                continue
+            seen_ids.add(key)
+            deduped.append(inst)
+        return AMPSnapshot(instances=deduped, host=host)
 
 
 def is_running(instance: dict) -> bool:
@@ -120,6 +165,12 @@ def find_metric(instance: dict, *keywords: str):
         if any(kw in low for kw in keywords):
             return value
     return None
+
+
+def metric_raw(metric: dict | None) -> float | None:
+    if not metric:
+        return None
+    return metric.get("RawValue")
 
 
 def format_metric_percent(metric: dict | None) -> str | None:
