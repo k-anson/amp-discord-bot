@@ -180,6 +180,13 @@ def metric_raw(metric: dict | None) -> float | None:
     return metric.get("RawValue")
 
 
+def format_mb_value_gb(value_mb) -> str | None:
+    """Format a raw MB number (not a metric dict) as 'X.X GB'."""
+    if not value_mb:
+        return None
+    return f"{value_mb / 1024:.1f} GB"
+
+
 def format_metric_max_gb(metric: dict | None) -> str | None:
     """Format just a memory metric's configured max as 'X.X GB' - no current/percent.
     Used for offline instances where there's no current usage to show."""

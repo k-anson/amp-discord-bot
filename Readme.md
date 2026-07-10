@@ -31,9 +31,9 @@ Memory: 12.0 GB
 ```
 
 - **Host Memory** is what's actually in use right now by running servers.
-- **Allocated Memory** is the sum of every server's *configured max* memory
-  (whether it's running or not) vs. the host's total RAM - i.e. what usage would
-  look like if everything ran at once. No color coding or warnings, just the numbers.
+- **Allocated Memory** is the sum of the *configured max* memory for servers that
+  are currently **running** (not every server regardless of state) vs. the host's
+  total RAM - i.e. how much RAM is committed right now by what's actually up.
 - An **offline** server's embed shows its configured memory allocation (the max it's
   set to use) since there's no current usage to report - just "Offline" plus that number.
 - The **Host Status** embed itself is blue whenever the bot successfully reached AMP.
@@ -42,12 +42,13 @@ Memory: 12.0 GB
   data to show at that point, so the per-server embeds are dropped until the next
   successful poll brings them back.
 
-**Caveat on Allocated Memory / offline memory display:** both rely on AMP reporting
-a `MaxValue` for a server's memory metric. Some AMP versions/instances report an
-empty `Metrics: {}` while a server is stopped, in which case that server won't show
-a memory line at all (falls back to "n/a") and silently won't count toward Allocated
-Memory. Turn on `debug_dump_raw` and check one of your offline instances' `Metrics`
-field to see whether this applies to your setup.
+**Caveat on Allocated Memory / offline memory display:** offline instances usually
+report an empty `Metrics: {}`, so both the per-server offline memory line and the
+host's total Allocated Memory now read `ContainerMemoryMB` on the instance itself
+first (falling back to `Metrics.Memory Usage.MaxValue` for non-container instances
+where that field is 0/absent). If a server still shows "n/a" while offline, check
+its raw JSON (`debug_dump_raw`) to see which field actually holds its configured
+memory limit in your AMP setup.
 
 **Discord's 10-embeds-per-message limit:** the host embed takes one slot, leaving
 9 for servers. If `instance_filter` (or your instance count) exceeds that, the bot

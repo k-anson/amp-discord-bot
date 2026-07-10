@@ -29,6 +29,7 @@ from amp_client import (
     format_metric_fraction,
     format_metric_memory_gb,
     format_metric_max_gb,
+    format_mb_value_gb,
     metric_raw,
 )
 
@@ -124,14 +125,18 @@ def build_overview_text(snapshot) -> str:
     else:
         lines.append("Host Memory: n/a")
 
-    # Allocated Memory: sum of each server's configured MAX memory (regardless of
-    # whether it's currently running) vs. total host RAM - i.e. what would be used
-    # if every server ran at once, not what's actually in use right now.
+    # Allocated Memory: sum of the configured MAX memory for servers that are
+    # currently RUNNING - i.e. how much of the host's RAM is committed right now,
+    # not what every server would use if they all ran at once. ContainerMemoryMB
+    # is the instance's configured container memory limit; fall back to the
+    # Metrics-based max for non-container instances.
     total_allocated_mb = 0.0
     have_allocated_data = False
-    for inst in relevant:
-        mem_metric = find_metric(inst, "memory", "ram")
-        cap = (mem_metric or {}).get("MaxValue")
+    for inst in running:
+        cap = inst.get("ContainerMemoryMB")
+        if not cap:
+            mem_metric = find_metric(inst, "memory", "ram")
+            cap = (mem_metric or {}).get("MaxValue")
         if cap:
             total_allocated_mb += cap
             have_allocated_data = True
@@ -199,8 +204,14 @@ def build_embeds(snapshot) -> list[discord.Embed]:
 
             body = f"Players: {players}\nMemory: {memory}\nCPU: {cpu}"
         else:
-            memory_metric = find_metric(inst, "memory", "ram")
-            allocated = format_metric_max_gb(memory_metric)
+            # Offline instances usually report an empty Metrics dict, so the memory
+            # cap isn't there - AMP tracks it separately as ContainerMemoryMB on the
+            # instance itself. Fall back to the Metrics-based max as a backstop for
+            # non-container instances where that field may be 0/absent.
+            allocated = (
+                format_mb_value_gb(inst.get("ContainerMemoryMB"))
+                or format_metric_max_gb(find_metric(inst, "memory", "ram"))
+            )
             body = "Offline\nMemory: " + (allocated if allocated else "n/a")
 
         embeds.append(discord.Embed(title=name, description=f"```\n{pad_block(body)}\n```", color=color))
