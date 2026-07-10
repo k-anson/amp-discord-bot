@@ -6,38 +6,65 @@ and CPU when running, or "Offline" when not.
 
 ## What it looks like
 
-One Discord embed. A "System Overview" section up top (running count, total
-players, an estimated host CPU/memory load, and a 🟢/🟡/🔴 capacity indicator),
-followed by one field per server using a colored circle emoji (🔵 online, 🔴 offline):
+One "Host Status" embed, followed by a separate embed per game server - titled
+with the server's name, colored blue if running / red if offline, no emoji needed
+since the embed's side color already carries that signal:
 
 ```
-Instances Running: 2/5
-Players Online: 3
-Host CPU: ~35%
-Host Memory: 6.0/23.4 GB (26%)
-Capacity: 🟢 Room to host another server
-
-🔵 Palworld
-Players: 3/8
-Memory: 40%
-CPU: 25%
-
-🔴 Rust
+Host Status
+Instances Running: 1/4
+Players Online: 0
+Host CPU: ~2%
+Host Memory: 1.8/23.5 GB (8%)
+Allocated Memory: 16.0/23.5 GB (68%)
+```
+```
+AbioticFactor                (blue)
+Players: 0/6
+Memory: 1.0/8.0 GB (13%)
+CPU: 2%
+```
+```
+Palworld                     (red)
 Offline
-
-Updated: 3:18 PM
+Memory: 12.0 GB
 ```
 
-The capacity indicator is based on total memory used by *running* instances vs.
-the host's installed RAM (from AMP's `Platform.InstalledRAMMB`), not a hardcoded
-"one server at a time" rule - so it adapts if your headroom or hosting habits
-change. Thresholds are tunable in `config.json`:
-- `capacity_warn_percent` (default 70) - 🟡 above this
-- `capacity_full_percent` (default 90) - 🔴 above this
+- **Host Memory** is what's actually in use right now by running servers.
+- **Allocated Memory** is the sum of every server's *configured max* memory
+  (whether it's running or not) vs. the host's total RAM - i.e. what usage would
+  look like if everything ran at once. No color coding or warnings, just the numbers.
+- An **offline** server's embed shows its configured memory allocation (the max it's
+  set to use) since there's no current usage to report - just "Offline" plus that number.
+- The **Host Status** embed itself is blue whenever the bot successfully reached AMP.
+  If the AMP API call fails outright (host down, network issue, bad credentials, etc.),
+  the bot posts a single red "Host Status: Offline" embed instead - there's no server
+  data to show at that point, so the per-server embeds are dropped until the next
+  successful poll brings them back.
 
-The CPU figure is a rough estimate (sum of each running instance's reported CPU
-percent) rather than true host-wide CPU load, since AMP doesn't expose that
-directly - treat it as a ballpark, not the number the capacity indicator relies on.
+**Caveat on Allocated Memory / offline memory display:** both rely on AMP reporting
+a `MaxValue` for a server's memory metric. Some AMP versions/instances report an
+empty `Metrics: {}` while a server is stopped, in which case that server won't show
+a memory line at all (falls back to "n/a") and silently won't count toward Allocated
+Memory. Turn on `debug_dump_raw` and check one of your offline instances' `Metrics`
+field to see whether this applies to your setup.
+
+**Discord's 10-embeds-per-message limit:** the host embed takes one slot, leaving
+9 for servers. If `instance_filter` (or your instance count) exceeds that, the bot
+logs a warning and only shows the first 9 - narrow `instance_filter` in `config.json`
+if you have more than 9 servers you want tracked.
+
+## A note on embed width
+
+Discord doesn't offer a way to set an embed's width directly - it auto-sizes each
+embed's box to fit its own content, up to a fixed max. That means a short body like
+"Offline" renders a visibly narrower box next to a longer one like a running
+server's Players/Memory/CPU block. To keep them looking consistent, every code
+block's lines get padded out with trailing spaces (invisible inside a monospace
+block) to a fixed width before sending - `embed_pad_width_chars` in `config.json`
+(default 34) controls that width. If your embeds still look uneven, try bumping
+this up a bit; there's no documented exact pixel threshold from Discord, so this
+is tuned by eye rather than a guaranteed API behavior.
 
 ## Setup
 

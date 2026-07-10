@@ -1,10 +1,12 @@
 """
 Discord bot that posts a live-updating AMP server status message.
 
-Format: a single Discord embed with one field per game server. Each field's
-name is a colored circle emoji (🔵 online / 🔴 offline) plus the server name,
-and its value is a code block with Players/Memory/CPU (or "Offline"). A footer
-on the embed shows the last-updated time.
+Format: one Discord embed for "Host Status" (instances running, players online,
+host CPU/memory, allocated memory), followed by a separate embed per game server -
+titled with the server's name, colored blue if online / red if offline, with a
+Players/Memory/CPU code block (or "Offline" plus its allocated memory if off).
+All embeds are attached to a single message. A footer on the last embed shows
+the last-updated time.
 
 Setup: copy config.example.json to config.json and fill in your values, then
 `pip install -r requirements.txt` and `python bot.py`.
@@ -25,6 +27,8 @@ from amp_client import (
     find_metric,
     format_metric_percent,
     format_metric_fraction,
+    format_metric_memory_gb,
+    format_metric_max_gb,
     metric_raw,
 )
 
@@ -66,6 +70,16 @@ amp = AMPClient(
 )
 
 state = load_state()
+
+# Discord embeds auto-size to their content width (up to a max), so a short
+# "Offline" body renders a noticeably narrower box than a longer one. Padding
+# every code block line out to a fixed width with trailing spaces (invisible
+# inside a monospace block) forces all embeds toward the same rendered width.
+EMBED_PAD_WIDTH = CONFIG.get("embed_pad_width_chars", 34)
+
+
+def pad_block(text: str, width: int = EMBED_PAD_WIDTH) -> str:
+    return "\n".join(line.ljust(width) for line in text.split("\n"))
 
 
 def build_overview_text(snapshot) -> str:
@@ -109,25 +123,70 @@ def build_overview_text(snapshot) -> str:
         lines.append(f"Host Memory: {used_gb:.1f}/{total_gb:.1f} GB ({round(pct)}%)")
     else:
         lines.append("Host Memory: n/a")
-        lines.append("Capacity: n/a (no memory metrics available)")
+
+    # Allocated Memory: sum of each server's configured MAX memory (regardless of
+    # whether it's currently running) vs. total host RAM - i.e. what would be used
+    # if every server ran at once, not what's actually in use right now.
+    total_allocated_mb = 0.0
+    have_allocated_data = False
+    for inst in relevant:
+        mem_metric = find_metric(inst, "memory", "ram")
+        cap = (mem_metric or {}).get("MaxValue")
+        if cap:
+            total_allocated_mb += cap
+            have_allocated_data = True
+
+    if have_allocated_data and host.installed_ram_mb:
+        alloc_gb = total_allocated_mb / 1024
+        total_gb = host.installed_ram_mb / 1024
+        pct = (total_allocated_mb / host.installed_ram_mb) * 100
+        lines.append(f"Allocated Memory: {alloc_gb:.1f}/{total_gb:.1f} GB ({round(pct)}%)")
+    else:
+        lines.append("Allocated Memory: n/a")
 
     return "\n".join(lines)
 
 
-def build_embed(snapshot) -> discord.Embed:
-    embed = discord.Embed(title="Server Status", color=discord.Color.dark_theme())
-    embed.description = f"```\n{build_overview_text(snapshot)}\n```"
+def build_embeds(snapshot) -> list[discord.Embed]:
+    host_embed = discord.Embed(
+        title="Host Status",
+        description=f"```\n{pad_block(build_overview_text(snapshot))}\n```",
+        color=discord.Color.blue(),
+    )
 
     instance_filter = CONFIG.get("instance_filter") or []
-    any_added = False
+    relevant = [
+        inst for inst in snapshot.instances
+        if not instance_filter
+        or (inst.get("FriendlyName") or inst.get("InstanceName")) in instance_filter
+    ]
 
-    for inst in snapshot.instances:
+    if not relevant:
+        host_embed.add_field(
+            name="Servers",
+            value=(
+                "No instances found. Check `instance_filter` in config.json and "
+                "confirm your API user can see instances."
+            ),
+            inline=False,
+        )
+        return [host_embed]
+
+    embeds = [host_embed]
+    MAX_SERVER_EMBEDS = 9  # Discord allows 10 embeds/message total; host embed takes 1
+
+    if len(relevant) > MAX_SERVER_EMBEDS:
+        log.warning(
+            "%d instances found but Discord only allows %d server embeds per message; "
+            "showing the first %d. Narrow `instance_filter` in config.json to fit.",
+            len(relevant), MAX_SERVER_EMBEDS, MAX_SERVER_EMBEDS,
+        )
+        relevant = relevant[:MAX_SERVER_EMBEDS]
+
+    for inst in relevant:
         name = inst.get("FriendlyName") or inst.get("InstanceName") or "Unknown Instance"
-        if instance_filter and name not in instance_filter:
-            continue
-
         running = is_running(inst)
-        dot = "🔵" if running else "🔴"
+        color = discord.Color.blue() if running else discord.Color.red()
 
         if running:
             players_metric = find_metric(inst, "user", "player", "active")
@@ -135,27 +194,28 @@ def build_embed(snapshot) -> discord.Embed:
             cpu_metric = find_metric(inst, "cpu")
 
             players = format_metric_fraction(players_metric) or "?/?"
-            memory = format_metric_percent(memory_metric) or "n/a"
+            memory = format_metric_memory_gb(memory_metric) or format_metric_percent(memory_metric) or "n/a"
             cpu = format_metric_percent(cpu_metric) or "n/a"
 
             body = f"Players: {players}\nMemory: {memory}\nCPU: {cpu}"
         else:
-            body = "Offline"
+            memory_metric = find_metric(inst, "memory", "ram")
+            allocated = format_metric_max_gb(memory_metric)
+            body = "Offline\nMemory: " + (allocated if allocated else "n/a")
 
-        embed.add_field(name=f"{dot} {name}", value=f"```\n{body}\n```", inline=False)
-        any_added = True
+        embeds.append(discord.Embed(title=name, description=f"```\n{pad_block(body)}\n```", color=color))
 
-    if not any_added:
-        embed.add_field(
-            name="No instances found",
-            value=(
-                "Check `instance_filter` in config.json and confirm your API user "
-                "can see instances."
-            ),
-            inline=False,
-        )
+    return embeds
 
-    return embed
+
+def build_offline_host_embed() -> discord.Embed:
+    """Shown when the AMP API call itself failed - we have no data on the host
+    or any server, so there's nothing to show except that the host is unreachable."""
+    return discord.Embed(
+        title="Host Status",
+        description=f"```\n{pad_block('Offline')}\n```",
+        color=discord.Color.red(),
+    )
 
 
 async def get_target_channel() -> discord.TextChannel | None:
@@ -179,13 +239,13 @@ async def update_status_message():
 
     try:
         snapshot = await amp.get_snapshot(debug_dump_raw=CONFIG.get("debug_dump_raw", False))
+        embeds = build_embeds(snapshot)
     except Exception as exc:
         log.error("Failed to fetch AMP instances: %s", exc)
-        return
+        embeds = [build_offline_host_embed()]
 
-    embed = build_embed(snapshot)
     timestamp = datetime.now().strftime("%-I:%M %p")
-    embed.set_footer(text=f"Updated: {timestamp}")
+    embeds[-1].set_footer(text=f"Updated: {timestamp}")
 
     message_id = state.get("message_id")
     message = None
@@ -196,12 +256,12 @@ async def update_status_message():
             message = None
 
     if message is None:
-        message = await channel.send(embed=embed)
+        message = await channel.send(embeds=embeds)
         state["message_id"] = message.id
         state["channel_id"] = channel.id
         save_state(state)
     else:
-        await message.edit(embed=embed)
+        await message.edit(embeds=embeds)
 
 
 @update_status_message.before_loop

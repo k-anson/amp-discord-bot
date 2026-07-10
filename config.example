@@ -7,8 +7,9 @@
     "password": "a-strong-password",
     "verify_ssl": true
   },
-  "update_interval_seconds": 45,
+  "update_interval_seconds": 60,
   "instance_filter": [],
   "debug_dump_raw": false,
-  "log_level": "INFO"
+  "log_level": "INFO",
+  "embed_pad_width_chars": 40
 }

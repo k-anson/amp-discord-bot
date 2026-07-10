@@ -173,6 +173,40 @@ def metric_raw(metric: dict | None) -> float | None:
     return metric.get("RawValue")
 
 
+def format_metric_max_gb(metric: dict | None) -> str | None:
+    """Format just a memory metric's configured max as 'X.X GB' - no current/percent.
+    Used for offline instances where there's no current usage to show."""
+    if not metric:
+        return None
+    cap = metric.get("MaxValue")
+    if not cap:
+        return None
+    units = str(metric.get("Units") or "MB").upper()
+    divisor = 1024.0 if "MB" in units else 1.0
+    return f"{cap / divisor:.1f} GB"
+
+
+def format_metric_memory_gb(metric: dict | None) -> str | None:
+    """Format a memory metric as 'current/max GB (percent%)'. Assumes MB unless
+    the metric's Units field says otherwise."""
+    if not metric:
+        return None
+    raw, cap = metric.get("RawValue"), metric.get("MaxValue")
+    if raw is None or not cap:
+        return None
+
+    units = str(metric.get("Units") or "MB").upper()
+    divisor = 1024.0 if "MB" in units else 1.0
+
+    raw_gb = raw / divisor
+    cap_gb = cap / divisor
+    percent = metric.get("Percent")
+    if percent is None:
+        percent = (raw / cap) * 100
+
+    return f"{raw_gb:.1f}/{cap_gb:.1f} GB ({round(percent)}%)"
+
+
 def format_metric_percent(metric: dict | None) -> str | None:
     if not metric:
         return None
