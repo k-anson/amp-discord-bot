@@ -73,8 +73,10 @@ versions over the years. `amp_client.py` searches metric keys by substring (`"cp
 `"memory"`, `"user"/"player"/"active"`) rather than an exact name, which covers most
 versions, but if you see "n/a":
 
-1. Set `"debug_dump_raw": true` in `config.json`
-2. Run `python bot.py`, watch the console for `=== RAW GetInstances ===`
+1. Set `"debug_dump_raw": true` in `config.json` and restart the bot (it's read once at
+   startup, so a running process won't pick up the change)
+2. Run `python bot.py` (or `journalctl -u amp-status-bot -f` if running as a service), watch
+   for `=== RAW GetInstances ===`
 3. Find the real metric key names in your output and adjust the keyword lists passed to
    `find_metric(...)` calls in `bot.py`'s `build_embeds()` function
 

@@ -85,7 +85,7 @@ class AMPClient:
 
         if debug_dump_raw:
             import json
-            log.debug("=== RAW GetInstances ===\n%s", json.dumps(data, indent=2)[:4000])
+            log.info("=== RAW GetInstances ===\n%s", json.dumps(data, indent=2)[:4000])
 
         instances: list[dict] = []
 
@@ -100,7 +100,9 @@ class AMPClient:
                     collect(item)
 
         collect(data)
-        return instances
+        # The ADS controller lists itself as an instance too (Module == "ADS") -
+        # exclude it since it's not a game server and has no player/CPU/memory metrics.
+        return [inst for inst in instances if inst.get("Module") != "ADS"]
 
 
 def is_running(instance: dict) -> bool:

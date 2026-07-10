@@ -138,13 +138,11 @@ async def update_status_message():
 
     if message is None:
         message = await channel.send(embed=embed)
-        log.info("Created embed message")
         state["message_id"] = message.id
         state["channel_id"] = channel.id
         save_state(state)
     else:
         await message.edit(embed=embed)
-        log.info("Updated embed message")
 
 
 @update_status_message.before_loop
