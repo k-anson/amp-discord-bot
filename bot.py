@@ -238,7 +238,10 @@ async def update_status_message():
         return
 
     try:
-        snapshot = await amp.get_snapshot(debug_dump_raw=CONFIG.get("debug_dump_raw", False))
+        snapshot = await amp.get_snapshot(
+            debug_dump_raw=CONFIG.get("debug_dump_raw", False),
+            debug_dump_path=CONFIG.get("debug_dump_path", "amp_raw_dump.json"),
+        )
         embeds = build_embeds(snapshot)
     except Exception as exc:
         log.error("Failed to fetch AMP instances: %s", exc)

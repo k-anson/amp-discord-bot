@@ -2,3 +2,4 @@ config.json
 .venv
 __pycache__
 state.json
+amp_raw_dump.json

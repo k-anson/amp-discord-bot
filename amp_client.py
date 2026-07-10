@@ -10,7 +10,9 @@ CAN drift between releases, so this client is written defensively:
 """
 
 import time
+import json
 import logging
+import os
 from dataclasses import dataclass, field
 import aiohttp
 
@@ -95,19 +97,24 @@ class AMPClient:
         if not self.session_id:
             raise AMPError(f"AMP login response had no session id: {data}")
 
-    async def get_instances(self, debug_dump_raw: bool = False) -> list[dict]:
+    async def get_instances(self, debug_dump_raw: bool = False, debug_dump_path: str = "amp_raw_dump.json") -> list[dict]:
         """Returns a flat list of instance dicts from the ADS controller."""
-        snapshot = await self.get_snapshot(debug_dump_raw=debug_dump_raw)
+        snapshot = await self.get_snapshot(debug_dump_raw=debug_dump_raw, debug_dump_path=debug_dump_path)
         return snapshot.instances
 
-    async def get_snapshot(self, debug_dump_raw: bool = False) -> AMPSnapshot:
+    async def get_snapshot(self, debug_dump_raw: bool = False, debug_dump_path: str = "amp_raw_dump.json") -> AMPSnapshot:
         """Returns instances plus host hardware info (RAM/CPU) from the ADS controller."""
         await self.login()
         data = await self._call("ADSModule/GetInstances", {})
 
         if debug_dump_raw:
-            import json
-            log.info("=== RAW GetInstances ===\n%s", json.dumps(data, indent=2)[:4000])
+            try:
+                with open(debug_dump_path, "w") as f:
+                    json.dump(data, f, indent=2)
+                log.info("Wrote raw GetInstances response to %s (%d bytes)",
+                          debug_dump_path, os.path.getsize(debug_dump_path))
+            except OSError as exc:
+                log.error("Failed to write debug dump to %s: %s", debug_dump_path, exc)
 
         instances: list[dict] = []
         host = HostInfo()

@@ -120,8 +120,13 @@ versions, but if you see "n/a":
 
 1. Set `"debug_dump_raw": true` in `config.json` and restart the bot (it's read once at
    startup, so a running process won't pick up the change)
-2. Run `python bot.py` (or `journalctl -u amp-status-bot -f` if running as a service), watch
-   for `=== RAW GetInstances ===`
+2. The full raw `GetInstances` response gets written to the file named in
+   `debug_dump_path` (default `amp_raw_dump.json`, created in the bot's working
+   directory) on every poll - the logs just note the file path and size rather than
+   printing the JSON itself, since it's normally too large to read comfortably in
+   `journalctl`/console output
+3. Open that file directly (`cat amp_raw_dump.json | less`, or pull it down and open
+   it in an editor) to see the real field names your AMP version uses
 3. Find the real metric key names in your output and adjust the keyword lists passed to
    `find_metric(...)` calls in `bot.py`'s `build_embeds()` function
 

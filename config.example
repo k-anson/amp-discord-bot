@@ -7,9 +7,10 @@
     "password": "a-strong-password",
     "verify_ssl": true
   },
-  "update_interval_seconds": 60,
+  "update_interval_seconds": 45,
   "instance_filter": [],
   "debug_dump_raw": false,
+  "debug_dump_path": "amp_raw_dump.json",
   "log_level": "INFO",
-  "embed_pad_width_chars": 40
+  "embed_pad_width_chars": 34
 }
