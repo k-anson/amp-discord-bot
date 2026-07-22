@@ -275,7 +275,7 @@ async def update_status_message():
         state["channel_id"] = channel.id
         save_state(state)
     else:
-        await message.edit(embeds=embeds)
+        await message.edit(content=None, embeds=embeds)
 
 
 @update_status_message.before_loop
