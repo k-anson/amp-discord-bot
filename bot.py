@@ -5,8 +5,8 @@ Format: one Discord embed for "Host Status" (instances running, players online,
 host CPU/memory, allocated memory), followed by a separate embed per game server -
 titled with the server's name, colored blue if online / red if offline, with a
 Players/Memory/CPU code block (or "Offline" plus its allocated memory if off).
-All embeds are attached to a single message. A footer on the last embed shows
-the last-updated time.
+All embeds are attached to a single message. A footer on the Host Status embed
+shows the last-updated time.
 
 Setup: copy config.example.json to config.json and fill in your values, then
 `pip install -r requirements.txt` and `python bot.py`.
@@ -259,7 +259,7 @@ async def update_status_message():
         embeds = [build_offline_host_embed()]
 
     timestamp = datetime.now().strftime("%-I:%M %p")
-    embeds[-1].set_footer(text=f"Updated: {timestamp}")
+    embeds[0].set_footer(text=f"Updated: {timestamp}")
 
     message_id = state.get("message_id")
     message = None
